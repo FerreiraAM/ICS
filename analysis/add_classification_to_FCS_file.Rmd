@@ -62,16 +62,9 @@ v_all_files <- list.files(dir_path, recursive = TRUE)
 
 ```{r split_directory_names}
 # Directory names
-df_all_files <- cbind("path" = v_all_files, 
-                      "directory_name" = dirname(v_all_files),
-                      "file_name" = basename(v_all_files))
-# Split path names # TO ADAPT with classification of the user's dataset
-tb_classified_files <- separate(as.tibble(df_all_files), 
-                                col = directory_name, 
-                                into = c("nb_bacteria", "subgroup"), 
-                                sep = "/",
-                                fill = "right",
-                                remove = FALSE)
+tb_classified_files <- data.frame("path" = v_all_files, 
+                                  "directory_name" = dirname(v_all_files),
+                                  "file_name" = basename(v_all_files))
 ```
 
 3. Extract the ID code: this 8 digits code correspond to the row of the FCS file, i.e.
@@ -88,15 +81,9 @@ tb_classified_files$row <- sub("0+(.*)", "\\1", tb_classified_files$barcode)
 4. Create classification number to add to the FCS file as it must to be numeric values:
 
 ```{r table_classification}
-# Convert group to number # TO ADAPT with the data's classification
-tb_classified_files <- tb_classified_files %>% 
-  mutate(manual_classification = 
-           case_when(nb_bacteria == "0_bacteria" ~ 0,
-                     nb_bacteria == "1_bacterium" ~ 1,
-                     nb_bacteria == "2_bacteria" ~ 2,
-                     nb_bacteria == "3_bacteria" ~ 3,
-                     nb_bacteria == "4_bacteria" ~ 4,
-                     nb_bacteria == "5_and_above" ~ 5))
+# Convert class to a number
+tb_classified_files$manual_classification <- 
+  as.numeric(as.factor(tb_classified_files$directory_name))
 ```
 
 # Create the classification parameter
@@ -106,14 +93,9 @@ Create a vector that will be added to the FCS file:
 ```{r create_col}
 # Extract dimensions of the exprs values
 dim_original <- dim(exprs(original))
-# Create a vector
-# Fill the vector with value to know if there is an image that was generated or not
-# if WaveformPresent parameter is different than 0, an image was generated
-## 111: image was generated
-## 112: no image was generated
-v_col <- mutate(as_tibble(exprs(original)), 
-                     image_TF = ifelse(WaveformPresent != 0, 111, 112)) %>% 
-  pull(image_TF)
+# Create a vector of zeros
+# zero = events in the exprs table that have not been classified
+v_col <- rep(0, dim_original[1])
 # Modify vector with the manual classification
 v_col[as.numeric(tb_classified_files$row)] <- tb_classified_files$manual_classification
 ```
@@ -182,18 +164,11 @@ Create a table with the classification code that has been used:
 
 ```{r table_classification_code}
 # Summarize the manual classification
-table_manualclassification <- unique(tb_classified_files[,c("nb_bacteria", 
+table_manualclassification <- unique(tb_classified_files[,c("directory_name", 
                               "manual_classification")])
-colnames(table_manualclassification)[1] <- "groups"
-# Table summarizing the code to know if an image was generated or not
-## Create based on the WaveformPresent parameters
-## 111: image was generated
-## 112: no image was generated
-table_image <- data.frame("groups" = c("yes_image", "no_image"),
-           "manual_classification" = c(111, 112))
-# Merge the two tables
-table_classcode <- rbind(table_manualclassification,
-                         table_image)
+# Add zero if an image was not classify
+table_classcode <- data.frame("groups" = c(table_manualclassification$directory_name, "no_classification"),
+                              "manual_classification" = c(table_manualclassification$manual_classification, 0))
 ```
 
 Save the table containing the used classification code:
